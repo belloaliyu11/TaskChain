@@ -11,6 +11,7 @@ import { ProfileCard } from "@/components/dashboard/profile-card";
 import { ContractMilestoneList, type ContractMilestone } from "@/components/dashboard/contract-milestone-list";
 import { ContractEscrowSummary } from "@/components/dashboard/contract-escrow-summary";
 import { EscrowStatusTracker, type EscrowStage } from "@/components/dashboard/escrow-status-tracker";
+import { EscrowFundingDialog } from "@/components/dashboard/escrow-funding-dialog";
 
 interface ProfileInfo {
   display_name: string | null;
@@ -72,6 +73,7 @@ export default function ContractDetailPage() {
   const [contract, setContract] = useState<ContractDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fundingDialogOpen, setFundingDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -94,6 +96,29 @@ export default function ContractDetailPage() {
       }
     })();
   }, [id]);
+
+  const handleFundingSuccess = () => {
+    // Reload contract data to show updated escrow status
+    if (id) {
+      (async () => {
+        try {
+          const res = await fetch(`/api/contracts/${id}`, {
+            headers: getAuthHeaders(),
+            credentials: "include",
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setContract(data.contract);
+          }
+        } catch (err) {
+          console.error("Failed to reload contract:", err);
+        }
+      })();
+    }
+  };
+
+  // Check if funding button should be shown
+  const canFund = contract && contract.escrow && contract.escrow.escrow_status === "unfunded" && contract.escrow.escrow_address;
 
   if (loading) {
     return (
@@ -185,9 +210,33 @@ export default function ContractDetailPage() {
               )}
             </div>
           </Card>
-          <ContractEscrowSummary escrow={contract.escrow} currency={contract.currency} />
+          <div className="md:col-span-2">
+            <ContractEscrowSummary escrow={contract.escrow} currency={contract.currency} />
+            {canFund && (
+              <div className="mt-4 flex justify-end">
+                <Button 
+                  onClick={() => setFundingDialogOpen(true)}
+                  className="bg-accent hover:bg-accent/90"
+                >
+                  <Wallet className="h-4 w-4 mr-2" />
+                  Fund Escrow
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Escrow Funding Dialog */}
+      <EscrowFundingDialog
+        open={fundingDialogOpen}
+        onOpenChange={setFundingDialogOpen}
+        contractId={contract.id}
+        contractAddress={contract.escrow?.escrow_address ?? null}
+        requiredAmount={contract.total_amount}
+        currency={contract.currency}
+        onFundingSuccess={handleFundingSuccess}
+      />
     </div>
   );
 }
